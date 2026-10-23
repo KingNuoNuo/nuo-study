@@ -10,11 +10,13 @@
 
 pluginManagement {
     repositories {
-        // 国内网络：阿里云镜像放最前（实测响应 0.1s 级），官方源留作兜底 ——
-        // 镜像同步有延迟时，缺失的 artifact 会自然回落到 google()/mavenCentral()。
-        maven("https://maven.aliyun.com/repository/gradle-plugin")
-        maven("https://maven.aliyun.com/repository/google")
-        maven("https://maven.aliyun.com/repository/public")
+        // ⚠️ 顺序就是优先级。**官方源必须在前面**（2026-10-23 改）：
+        //    原来是阿里云镜像排最前、官方源兜底，本地很快；但推上 GitHub 后
+        //    CI 跑在国外，访问 maven.aliyun.com 反而成了拖累 ——
+        //    实测 Hilt 插件 `com.google.dagger.hilt.android:2.60.1` 在 CI 上
+        //    报 "was not found in any of the following sources"，
+        //    而同一个版本在 mavenCentral 上是 HTTP 200（镜像没同步这个 marker）。
+        //    国内网络慢一点就慢一点，正确性优先；本地已有缓存，不受影响。
         google()
         mavenCentral()
         gradlePluginPortal()
@@ -24,8 +26,6 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        maven("https://maven.aliyun.com/repository/google")
-        maven("https://maven.aliyun.com/repository/public")
         google()
         mavenCentral()
     }
