@@ -81,3 +81,7 @@ shot-*.png
 
 # buildSrc 自己的 gradle 缓存（android/.gradle 那条盖不到它）
 android/buildSrc/.gradle/
+
+# 截图（验收用的临时产物，不进仓库）
+shot-*.jpg
+samples/
