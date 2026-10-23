@@ -13,7 +13,7 @@ plugins {
 }
 
 android {
-    namespace = "com.jinyu.study.feature.chinese"
+    namespace = "com.nuostudy.feature.chinese"
 }
 
 dependencies {

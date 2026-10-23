@@ -96,13 +96,21 @@ jobs:
           chmod +x gradlew
           ./gradlew :app-student:assemblePerf :app-parent:assemblePerf --no-daemon --stacktrace
 
+      - name: 收拢 APK
+        # upload-artifact@v4 会剥掉路径的公共祖先（android/），artifact 内部变成
+        # app-student/build/outputs/... 的深层结构 —— release 里 `apk/*.apk` 就匹配
+        # 不到（softprops 还不报错，假装成功）。先拷到固定浅目录，结构完全可控。
+        run: |
+          mkdir -p apks
+          cp android/app-student/build/outputs/apk/perf/*.apk apks/
+          cp android/app-parent/build/outputs/apk/perf/*.apk apks/
+          ls -la apks/
+
       - name: 上传 APK
         uses: actions/upload-artifact@v4
         with:
           name: apk
-          path: |
-            android/app-student/build/outputs/apk/perf/*.apk
-            android/app-parent/build/outputs/apk/perf/*.apk
+          path: apks/*.apk
           retention-days: 30
           if-no-files-found: error
 
@@ -123,3 +131,6 @@ jobs:
         with:
           files: apk/*.apk
           generate_release_notes: true
+          # 2026-10-23 踩坑：pattern 匹配不到文件时它**不报错**，静默建一个
+          # 空资产 Release 假装成功。加上这行，匹配不到就直接 fail。
+          fail_on_unmatched_files: true

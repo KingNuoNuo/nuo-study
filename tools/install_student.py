@@ -42,7 +42,7 @@ ADB = Path(r"D:\workbuddy\toolchain\android-sdk\platform-tools\adb.exe")
 # 学生端包名（与 app-student/build.gradle.kts 的 applicationId + 各 build type 的
 # applicationIdSuffix 一致）。⚠️ perf 档**刻意沿用** `.debug` 后缀 —— 与 debug 档
 # 同包名才能覆盖安装到已装好的平板上，否则会装出第二个 App、服务端设置全空。
-PKG = "com.jinyu.study.student.debug"
+PKG = "com.nuostudy.student.debug"
 
 # 各变体的产出名（相对脚本所在目录的上级 dist/）
 VARIANT_APK = {
@@ -139,7 +139,7 @@ def main() -> int:
     time.sleep(0.5)
     r = adb(
         "shell", "am", "start", "-W", "-n",
-        f"{PKG}/com.jinyu.study.student.MainActivity",
+        f"{PKG}/com.nuostudy.student.MainActivity",
         serial=args.serial,
     )
     for line in r.splitlines():

@@ -14,7 +14,7 @@ plugins {
 }
 
 android {
-    namespace = "com.jinyu.study.feature.report"
+    namespace = "com.nuostudy.feature.report"
 }
 
 dependencies {

@@ -31,7 +31,7 @@ val nuoBaseUrl: String = localProps.getProperty("nuo.baseUrl") ?: ""
 val nuoFamilyToken: String = localProps.getProperty("nuo.familyToken") ?: ""
 
 android {
-    namespace = "com.jinyu.study.core.data"
+    namespace = "com.nuostudy.core.data"
 
     buildFeatures { buildConfig = true }
 

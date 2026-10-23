@@ -12,7 +12,7 @@ plugins {
 }
 
 android {
-    namespace = "com.jinyu.study.feature.capture"
+    namespace = "com.nuostudy.feature.capture"
 }
 
 dependencies {

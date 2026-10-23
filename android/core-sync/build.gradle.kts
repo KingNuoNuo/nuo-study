@@ -15,7 +15,7 @@ plugins {
 }
 
 android {
-    namespace = "com.jinyu.study.core.sync"
+    namespace = "com.nuostudy.core.sync"
 }
 
 dependencies {

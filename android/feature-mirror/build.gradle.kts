@@ -12,7 +12,7 @@ plugins {
 }
 
 android {
-    namespace = "com.jinyu.study.feature.mirror"
+    namespace = "com.nuostudy.feature.mirror"
 }
 
 dependencies {

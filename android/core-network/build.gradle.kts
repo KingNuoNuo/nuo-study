@@ -13,7 +13,7 @@ plugins {
 }
 
 android {
-    namespace = "com.jinyu.study.core.network"
+    namespace = "com.nuostudy.core.network"
 
     buildFeatures {
         buildConfig = true   // 需要 DEBUG 标志决定是否挂日志拦截器

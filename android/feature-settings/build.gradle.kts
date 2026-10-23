@@ -16,7 +16,7 @@ plugins {
 }
 
 android {
-    namespace = "com.jinyu.study.feature.settings"
+    namespace = "com.nuostudy.feature.settings"
 }
 
 dependencies {

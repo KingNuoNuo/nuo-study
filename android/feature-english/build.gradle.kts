@@ -12,7 +12,7 @@ plugins {
 }
 
 android {
-    namespace = "com.jinyu.study.feature.english"
+    namespace = "com.nuostudy.feature.english"
 }
 
 dependencies {

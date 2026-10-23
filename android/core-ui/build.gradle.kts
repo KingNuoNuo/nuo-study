@@ -9,7 +9,7 @@ plugins {
 }
 
 android {
-    namespace = "com.jinyu.study.core.ui"
+    namespace = "com.nuostudy.core.ui"
 }
 
 dependencies {

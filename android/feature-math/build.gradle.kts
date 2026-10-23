@@ -13,7 +13,7 @@ plugins {
 }
 
 android {
-    namespace = "com.jinyu.study.feature.math"
+    namespace = "com.nuostudy.feature.math"
 }
 
 dependencies {

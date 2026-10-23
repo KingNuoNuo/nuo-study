@@ -120,7 +120,7 @@ cd android
 装完建议做一次 AOT 编译（冷启动 1.2s → 0.9s，滚动更顺）：
 
 ```bash
-adb shell cmd package compile -m speed -f com.jinyu.study.student.debug
+adb shell cmd package compile -m speed -f com.nuostudy.student.debug
 ```
 
 ### 3. 首次配置

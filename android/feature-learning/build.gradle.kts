@@ -15,7 +15,7 @@ plugins {
 }
 
 android {
-    namespace = "com.jinyu.study.feature.learning"
+    namespace = "com.nuostudy.feature.learning"
 }
 
 dependencies {

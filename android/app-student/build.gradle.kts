@@ -18,10 +18,10 @@ plugins {
 }
 
 android {
-    namespace = "com.jinyu.study.student"
+    namespace = "com.nuostudy.student"
 
     defaultConfig {
-        applicationId = "com.jinyu.study.student"
+        applicationId = "com.nuostudy.student"
         // ⚠️ 与家长端**各自独立**递增，不要同步
         versionCode = 1
         versionName = "0.1.0"
