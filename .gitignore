@@ -85,3 +85,6 @@ android/buildSrc/.gradle/
 # 截图（验收用的临时产物，不进仓库）
 shot-*.jpg
 samples/
+
+# 安卓单测在工作目录生成的临时数据库残留
+tmp-child-db*/
