@@ -89,3 +89,8 @@ samples/
 # 安卓单测在工作目录生成的临时数据库残留
 tmp-child-db*/
 tmp-child.db
+
+# 更多联调残留
+tmp-ui.xml
+tmp_merged.db*
+tmp-student-current/
