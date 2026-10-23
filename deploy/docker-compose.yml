@@ -1,0 +1,140 @@
+# NAS 上的 docker 项目
+#
+# 命名现状（2026-10-10 统一过一轮）：
+#   · compose **project 名** = 目录名 = `my-project`（compose 默认取目录名，我们没显式指定）
+#   · 本文件的 **service 名** = `nuo-study`（与容器名、镜像名一致）
+#   ⚠️ 所以 `docker compose ls` 里项目仍显示 my-project，但里面两个服务分别叫
+#      nuo-study / weknora-uploader —— 这不是笔误。要连 project 名一起改成 nuo-study
+#      得 mv 目录（见文件末尾「改名步骤」注释）。
+#
+# NAS 上的位置：/vol1/1000/docker/my-project/
+# 本文件是本机可维护的副本 —— 改完跑 tools/deploy_nas.py（它会先比对再传），
+# 或者直接跑 --start。别只在 NAS 上改，那样下次部署就被覆盖了。
+#
+# 起停：
+#   docker compose -f /vol1/1000/docker/my-project/docker-compose.yml up -d
+#   docker compose -f /vol1/1000/docker/my-project/docker-compose.yml restart
+# 但 nuo_study 更推荐用 tools/deploy_nas.py --start / --stop / --log（会顺带健康检查）。
+#
+# ⚠️ 两个服务都用 host 网络：容器直接共享宿主机网络栈。
+#    · 好处：端口就是宿主机的端口（8092 / 8770），以后加服务不用改映射，
+#      服务之间直接 127.0.0.1 互连（weknora-uploader 就是靠这个连 127.0.0.1:8081 的 WeKnora）
+#    · 代价：不能写 ports:（compose 会直接报错），端口冲突要自己管 ——
+#      起容器前必须先停掉原来占口的裸进程 / systemd 服务，否则会抢端口
+#
+# ⚠️ user 固定成 1000:1001（NAS 上的 jinyu / Users）：
+#    挂载进来的目录属主是 jinyu。容器若以 root 跑，新建的文件（db / 图片 / 暂存文件）
+#    会变成 root 属主，之后宿主机上 jinyu 就改不动了（也会挡住 deploy_nas.py 覆盖）。
+#
+# ⚠️ restart: unless-stopped —— 这正是一直想要的「NAS 重启自启」，取代裸进程 / systemd。
+#    注意语义：`docker stop` / `docker kill` 算「用户显式停止」，它不会自动拉起；
+#    而进程自己崩、或 daemon/宿主机重启，它都会回来。
+services:
+
+  # ---------------------------------------------------------------- nuo_study
+  # ⚠️ **service 名 = 容器名 = 镜像名 = `nuo-study`**，三者同名（2026-10-10 统一）。
+  #    但它们的性质不同，改起来的代价天差地别：
+  #      · container_name / image 只影响显示、`docker inspect/logs`、以及镜像列表；
+  #      · **service 名是 compose 的核心契约** —— 改了它，compose 会把旧 service 的容器
+  #        当成「孤儿」（orphan），而新 service 又要用同名 container_name 建容器 →
+  #        直接撞名冲突。所以改 service 名**必须搭配一次带 --remove-orphans 的重建**
+  #        （或先 `docker rm -f nuo-study`），否则 up 一定失败。
+  #    改名的历史（别再来一次了）：
+  #      2026-10-10 靖哥哥先改容器名 my-project → nuo-study，随后把 service 名一并统一。
+  #    deploy_nas.py 一律用 **service 名**定位容器（`compose ps -q nuo-study`）。
+  #
+  # ⚠️ 2026-10-23 起这个容器**同时承担英语服务**（TTS / 转写 / 千问对话 / 智聆评测 +
+  #    英语网页）。原来那个 Node 容器 `nuonuo-english`（4173）已下线，迁移步骤见
+  #    docs/merge-english.md。所以镜像里多了 ffmpeg（Dockerfile 里 apt 装的），
+  #    环境变量则**全在挂载进来的 .env 文件里**（config.py 直接读 /app/.env），
+  #    这个 compose 的 environment 段只放与宿主机相关的那两个（TZ / HOME）。
+  nuo-study:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nuo-study:latest
+    container_name: nuo-study
+    network_mode: host
+    restart: unless-stopped
+    # stop_grace_period 给到 20s（默认 10s 不够）：关闭要走两段 ——
+    #   ① uvicorn 最多等 5s（timeout_graceful_shutdown，为了那条永不结束的 SSE 长连接）
+    #   ② worker.stop() 逐个 join 消费线程最多 10s
+    # 留 10s 的话第二段会被 SIGKILL 打断，正在跑的识别任务就直接断了。
+    # （任务不会丢：队列是 lease 机制，过期后会被重新 claim。）
+    stop_grace_period: 20s
+    user: "1000:1001"
+
+    working_dir: /app
+    command: ["python", "run_server.py"]
+
+    volumes:
+      # 代码 + 数据 + .env 全在这一层挂载里
+      - /vol2/1000/software/nuo_study:/app
+      # 时区（只读），让日志时间戳跟宿主机一致
+      - /etc/localtime:/etc/localtime:ro
+
+    environment:
+      - TZ=Asia/Shanghai
+      # 容器内 HOME 指向可写目录，避免个别库往 / 下写缓存时报权限错
+      - HOME=/tmp
+
+  # --------------------------------------------------- WeKnora 增强管理器
+  # /vol2/1000/software/script/weknora-uploader 的容器化外壳。
+  #
+  # 为什么**没有 Dockerfile**：那个脚本零第三方依赖（只用 Python 标准库，
+  # 连 Web 框架都是 http.server 自带的），装依赖那一步根本不存在 ——
+  # 直接用官方 python:3.11-slim 镜像 + 挂载源码就是最简形态，也省掉一次构建。
+  #
+  # 取代了原来的 systemd 服务 /etc/systemd/system/weknora-uploader.service
+  # （那个是 enabled + Restart=always，不停掉会跟容器抢 8770）。
+  # 已执行：sudo systemctl disable --now weknora-uploader
+  # 回退：sudo systemctl enable --now weknora-uploader（unit 文件仍在，没删）
+  weknora-uploader:
+    image: python:3.11-slim
+    container_name: weknora-uploader
+    network_mode: host
+    restart: unless-stopped
+    # 脚本没有注册 SIGTERM handler（只挂了 KeyboardInterrupt），所以 docker stop
+    # 发来的 SIGTERM 会让它**立即退出**，不会拖到 grace 超时被 SIGKILL。
+    # 代价是收不到「清理暂存目录」那段 —— 但那是设计内的：残留的暂存文件会在
+    # 下次启动时被 restore_staging_from_disk() 捡回来重新入库（见下面的 TMPDIR 说明）。
+    stop_grace_period: 10s
+    user: "1000:1001"
+
+    working_dir: /app
+    # --host 0.0.0.0 / --port 8770 跟原 systemd 的 ExecStart 完全一致
+    # （.env 里 WEKNORA_HOST/WEKNORA_PORT 也是这两个值，显式写上更难改错）
+    # -u：不缓冲 stdout，否则 docker logs 看不到启动横幅和上传日志
+    command: ["python", "-u", "weknora_uploader_gui.py", "--host", "0.0.0.0", "--port", "8770"]
+
+    volumes:
+      # 源码 + .env 一起挂进来（脚本按 __file__ 同目录找 .env，路径自动对上）。
+      # rw 是为了跟 nuo-study 那个服务保持一致；脚本本身不往这个目录写东西。
+      - /vol2/1000/software/script/weknora-uploader:/app
+      # ⚠️ 暂存目录必须**持久化**，不能让它落在容器自己的 /tmp 里：
+      #    脚本会在启动时扫描 TMPDIR 的父目录，把上次遗留的 weknora_uploader_*
+      #    目录里的文件搬回来（进程重启不丢在传的批次）。容器 /tmp 每次都新，
+      #    挂宿主机目录 + TMPDIR 指过去才能保住这个特性。
+      #    这个目录已在宿主机预建（属主 jinyu），container 不得由 Docker 自动创建
+      #    —— 那样会建成 root 属主，以 uid 1000 跑的进程写不进去。
+      - /vol2/1000/software/script/weknora-uploader/.staging:/staging
+      - /etc/localtime:/etc/localtime:ro
+
+    environment:
+      - TZ=Asia/Shanghai
+      - PYTHONUNBUFFERED=1
+      # 别在挂载进来的源码目录里生成 __pycache__（会污染宿主机上的源码树）
+      - PYTHONDONTWRITEBYTECODE=1
+      - HOME=/tmp
+      # tempfile.mkdtemp 认这个 → 暂存目录落在 /staging（对应上面那个挂载）
+      - TMPDIR=/staging
+
+# ---------------------------------------------------------------- 改名步骤
+# 把 compose project 名（= 目录名）也改成 nuo-study 的完整动作 —— 只在真要动时照做：
+#   1) sudo systemctl stop docker 前不必；直接：
+#      cd /vol1/1000/docker && docker compose -f my-project/docker-compose.yml down --remove-orphans
+#   2) mv /vol1/1000/docker/my-project /vol1/1000/docker/nuo-study
+#   3) 之后所有命令的 -f 路径、以及本机 tools/deploy_nas.py 的 DOCKER_DIR 都指向新目录
+#      （DOCKER_DIR 可用环境变量 NUO_DOCKER_DIR 覆盖，不必改代码）
+#   4) docker compose -f /vol1/1000/docker/nuo-study/docker-compose.yml up -d --build
+# 注意：project 名一改，两个服务都会被当新项目重建（镜像走缓存，秒级；数据在卷里不受影响）。

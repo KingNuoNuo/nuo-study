@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="苏教译林六年级上册英语家庭学习原型" />
+  <title>诺诺英语学习屋</title>
+  <script>if(new URLSearchParams(location.search).get('embed')==='tablet')document.documentElement.classList.add('tablet-embed')</script>
+  <link rel="stylesheet" href="styles.css?v=curriculum-20261023-2" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">N</span><div><strong>诺诺英语</strong><small>六年级 · 上册 · <span id="buildVer">v?</span></small></div></div>
+      <nav aria-label="主要导航">
+        <button class="nav-item active" data-view="today"><span>⌂</span>今日学习</button>
+        <button class="nav-item" data-view="course"><span>▤</span>同步课程</button>
+        <button class="nav-item" data-view="words"><span>Aa</span>单词卡片</button>
+        <!-- 2026-10-23：与安卓端对齐。页面 (section#quiz) 一直都在，
+             但侧栏一直没给它入口 —— 只能从「今日学习」的任务卡绕进去，
+             于是看起来像"网页没有句型挑战"。 -->
+        <button class="nav-item" data-view="quiz"><span>✓</span>句型挑战</button>
+        <button class="nav-item" data-view="speaking"><span>●</span>AI口语</button>
+        <button class="nav-item" data-view="mistakes"><span>✎</span>错题本 <b id="mistakeBadge">0</b></button>
+        <button class="nav-item" data-view="report"><span>◫</span>学习报告</button>
+      </nav>
+      <div class="streak-card"><span>🔥</span><div><strong id="streakDays">3 天</strong><small>连续学习</small></div></div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <button id="menuButton" class="menu-button" aria-label="打开菜单">☰</button>
+        <div><p id="dateLabel"></p><h1 id="pageTitle">下午好，诺诺 👋</h1></div>
+        <div class="profile"><div><strong>六年级</strong><small>本周 68 分钟</small></div><span>诺</span></div>
+      </header>
+
+      <section id="today" class="view active">
+        <div class="hero-card">
+          <div>
+            <span class="eyebrow" id="heroUnit">UNIT 1</span>
+            <h2>今天进步一点点</h2>
+            <p id="heroDesc">预计 15 分钟完成，先热身，再进入故事。</p>
+            <button class="primary" id="startLearning">开始今日学习 <span>→</span></button>
+          </div>
+          <div class="hero-visual" aria-hidden="true"><div class="sun"></div><div class="hill h1"></div><div class="hill h2"></div><span class="flag">GO!</span></div>
+        </div>
+
+        <div class="section-heading"><div><h2>今日任务</h2><p><span id="doneCount">0</span>/4 已完成</p></div><span class="progress-ring" id="progressRing">0%</span></div>
+        <div class="task-grid">
+          <article class="task-card" data-task="words"><div class="task-icon coral">Aa</div><span class="tag">5 分钟</span><h3>单词热身</h3><p id="taskWordsDesc">…</p><button>去学习 →</button></article>
+          <article class="task-card" data-task="story"><div class="task-icon blue">▶</div><span class="tag">4 分钟</span><h3>故事跟读</h3><p id="taskStoryDesc">…</p><button>去跟读 →</button></article>
+          <article class="task-card" data-task="quiz"><div class="task-icon yellow">✓</div><span class="tag">4 分钟</span><h3>句型挑战</h3><p id="taskQuizDesc">…</p><button>去挑战 →</button></article>
+          <article class="task-card" data-task="review"><div class="task-icon green">↻</div><span class="tag">2 分钟</span><h3>旧词复习</h3><p>复习 4 个即将遗忘的单词</p><button>快速复习 →</button></article>
+        </div>
+      </section>
+
+      <section id="course" class="view">
+        <div class="section-heading"><div><span class="eyebrow">教材同步</span><h2>六年级上册</h2></div><span class="muted" id="courseHint">…</span></div>
+        <div id="unitList" class="unit-list"></div>
+        <article class="lesson-panel">
+          <div class="lesson-copy"><span class="eyebrow" id="lessonEyebrow">STORY TIME</span><h2 id="lessonTitle">…</h2><p id="lessonCopy">…</p><div class="dialogue" id="lessonDialogue"></div><div class="lesson-actions"><button class="primary" id="speakStory">▶ 播放示范</button><button class="secondary" id="finishStory">标记已跟读</button></div></div>
+          <div class="question-card"><small>BIG QUESTION</small><strong id="bigQuestionText">…</strong><span id="bigQuestionNote"></span></div>
+        </article>
+        <article class="audio-library">
+          <div><span class="eyebrow">课课练配套音频</span><h2>8个单元 · 40段录音</h2><p>选择课时或单元检测，原音频将直接从家庭服务器播放。</p></div>
+          <div class="audio-controls"><select id="audioTrack" aria-label="选择课时音频"></select><audio id="courseAudio" controls preload="metadata"></audio></div>
+        </article>
+      </section>
+
+      <section id="words" class="view">
+        <div class="section-heading"><div><span class="eyebrow" id="wordsEyebrow">WORD BANK</span><h2 id="wordsTitle">今天的核心单词</h2></div><span id="wordCounter" class="muted">1 / 6</span></div>
+        <div id="wordsUnitPills" class="unit-list compact"></div>
+        <div class="flashcard-wrap">
+          <button class="round-button" id="prevWord" aria-label="上一个单词">←</button>
+          <article class="flashcard" id="flashcard" tabindex="0">
+            <div class="card-front"><span class="word-level">核心词</span><button id="speakWord" aria-label="播放读音">🔊</button><h2 id="wordText">honest</h2><p id="phonetic">/ˈɒnɪst/</p><div class="example" id="exampleText">It is important to be honest.</div><small>点击卡片查看释义</small></div>
+            <div class="card-back"><span>中文释义</span><h2 id="meaningText">诚实的</h2><p id="tipText">注意：字母 h 不发音。</p><small>点击返回单词</small></div>
+          </article>
+          <button class="round-button" id="nextWord" aria-label="下一个单词">→</button>
+        </div>
+        <div class="word-actions"><button class="secondary" id="hardWord">还不熟悉</button><button class="primary" id="knowWord">我记住了 ✓</button></div>
+      </section>
+
+      <section id="quiz" class="view">
+        <div class="quiz-shell">
+          <div class="quiz-progress"><span id="quizStep">第 1 题 / 共 3 题</span><div><i id="quizBar"></i></div></div>
+          <span class="eyebrow">句型挑战</span><h2 id="quizQuestion"></h2><p class="quiz-hint">选择最合适的答案</p><div id="quizOptions" class="quiz-options"></div><p id="quizFeedback" class="quiz-feedback"></p>
+          <button class="primary" id="nextQuestion" disabled>下一题 →</button>
+        </div>
+      </section>
+
+      <section id="speaking" class="view">
+        <div class="section-heading"><div><span class="eyebrow">SPEAKING STUDIO</span><h2>AI口语教室</h2><p>跟读由腾讯智聆评分；自由对话由AI陪练，微软英式声音回答。</p></div><div id="serviceStatus" class="service-status">正在检查服务…</div></div>
+        <div class="mode-switch"><button class="active" data-speak-mode="repeat">课文跟读</button><button data-speak-mode="chat">自由对话</button></div>
+        <div id="repeatPanel" class="speaking-panel">
+          <div class="practice-prompt"><span>请朗读</span><h2 id="repeatText">You should tell the truth and admit your mistake.</h2><button class="secondary" id="playPrompt">🔊 听标准示范</button> <button class="secondary" id="nextSentence">换一句 →</button></div>
+          <div class="recorder"><div class="mic-orbit"><button class="mic-button" id="repeatRecord" aria-label="开始录音">●</button></div><strong id="repeatRecordLabel">点击开始录音</strong><small>再次点击结束，建议在安静环境中录制</small></div>
+          <div id="scoreResult" class="score-result empty"><p>录音结束后，这里会显示准确度、流利度、完整度和逐词结果。</p></div>
+        </div>
+        <div id="chatPanel" class="speaking-panel hidden">
+          <div id="chatMessages" class="chat-messages"><div class="chat-bubble assistant"><small>AI Tutor</small><p>Hello, Nono! Why is honesty important?</p></div></div>
+          <div class="chat-recorder"><button class="mic-button small" id="chatRecord">●</button><div><strong id="chatRecordLabel">点击说英语</strong><small>系统会识别文字，再由AI用微软英式声音回答</small></div></div>
+        </div>
+      </section>
+
+      <section id="mistakes" class="view">
+        <div class="section-heading"><div><span class="eyebrow">SMART REVIEW</span><h2>错题本</h2><p>做错并不可怕，它会变成下一次进步的线索。</p></div><button class="secondary" id="clearMistakes">清空已掌握</button></div>
+        <div id="mistakeList" class="mistake-list"></div>
+      </section>
+
+      <section id="report" class="view">
+        <div class="section-heading"><div><span class="eyebrow">WEEKLY REPORT</span><h2>本周学习报告</h2><p id="reportRange">最近 7 天</p></div><span class="report-score"><b id="weeklyScore">82</b><small>本周状态</small></span></div>
+        <div class="stats-grid"><article><span>完成任务</span><strong id="taskStat">0<small> 个</small></strong><em>今日任务</em></article><article><span>掌握单词</span><strong id="knownStat">18<small> 个</small></strong><em>本周目标 24</em></article><article><span>跟读次数</span><strong id="repeatStat">0<small> 次</small></strong><em>开口就有进步</em></article></div>
+        <div class="report-grid"><article class="chart-card"><h3>每日学习时间</h3><div class="bar-chart" id="barChart"></div></article><article class="insight-card"><span>本周发现</span><h3>诺诺的词义理解很好，敢于开口 👍</h3><p>建议接下来重点练习 should / shouldn't 的否定表达，并复习容易混淆的 truth 和 honest。</p><button class="primary" data-view-jump="words">开始针对练习</button></article></div>
+      </section>
+    </main>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js?v=20261023-2"></script>
+</body>
+</html>

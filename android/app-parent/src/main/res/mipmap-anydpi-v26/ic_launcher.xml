@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  家长端启动图标（自适应）。⚠️ 目录名必须是 `mipmap-anydpi-v26`：
+  v26 是 adaptive icon 的引入版本，而 minSdk 正好是 26，
+  所以这一个 XML 就覆盖全部目标设备，无需再备五套位图。
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

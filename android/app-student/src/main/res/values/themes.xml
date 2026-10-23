@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      用平台主题而不是 Material3 的 XML 主题：整 App 都是 Compose 写的，
+      XML 主题只负责「Activity 起来那一刻到第一帧之间」的窗口外观，
+      为此额外引入 com.google.android.material 依赖不划算。
+    -->
+    <style name="Theme.Study" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>

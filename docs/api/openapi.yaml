@@ -1,0 +1,987 @@
+openapi: 3.0.3
+
+info:
+  title: 小学六年级家庭自学 App API
+  version: 1.0.0
+  description: |
+    前后端分离接口契约。所有路径前缀 `/api/v1`。
+
+    ## 部署形态
+    单家庭私有部署（自用，无多租户）。认证不使用 JWT，而是服务端 `.env` 中配置的
+    一个 `FAMILY_TOKEN`，家长端/孩子端 App 首次配置时填入即可。
+    **Token 只在 .env 与客户端本地，绝不进代码库。**
+
+    ## 三条不可违背的约定
+    1. **识别结果永远是草稿**。识别接口只产出 `assignment.status=0`（待确认）的数据，
+       必须经过家长 `PATCH` 确认后调用 `publish` 才会出现在孩子端。
+       这道关卡是为了**防错**（识别错了孩子会照着错的做），不是合规要求。
+    2. **作答提交必须带 `clientReqId`**（UUID v4，客户端生成）。服务端以此为幂等键，
+       重复提交返回同一条记录，不报错。这是离线补传能安全重试的前提。
+    3. **时间一律使用 ISO 8601 带时区**，日期字段用 `date`（yyyy-MM-dd），
+       避免「今天」在客户端与服务端跨时区不一致。
+
+    ## 错误码约定
+    - 业务错误统一返回 `{ code, message, traceId }`，HTTP 状态码仅表达传输层语义。
+    - `code` 使用 6 位数字，前 3 位对齐 HTTP 状态码，如 `404001` 资源不存在。
+
+    ## 实现状态（重要：别把「契约里有」当成「已经能用」）
+    - ✅ **已实现（M1）**：系统探测、家庭与设备、学生档案、截图上传与识别任务、
+      作业单的草稿 / 家长确认 / 发布 / 丢弃。
+    - ⏸ **已暂缓（M2，2026-10-09 决定）**：作答提交、自主练习、错题本、学情报告、
+      知识点树 —— 服务端**没有注册这些路由**，调用会 404。
+      契约先留着是为了恢复时不必重写；实现完整保留在 `server/study.py` 与
+      `server/grader.py`，相关数据表也都还在 DDL 里。
+    - ⚠️ **响应字段一律 camelCase**。服务端曾在输出边界漏掉这层转换，直接返回数据库列名
+      （snake_case），于是客户端按本契约写的 DTO 会**静默地全部取到默认值**（不报错，
+      只是 assignDate 是 null、itemType 恒为 1）。
+      现已在 `server/store.py::camelize()` 统一处理，冒烟测试有回归断言守着。
+
+servers:
+  - url: https://api.example.com/api/v1
+    description: 生产环境
+  - url: http://192.168.1.10:8080/api/v1
+    description: 内网联调
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: system
+    description: 系统与家庭配置
+  - name: device
+    description: 设备登记（孩子端平板 / 家长端手机）
+  - name: student
+    description: 学生档案
+  - name: capture
+    description: 作业截图上传与识别
+  - name: assignment
+    description: 作业单与作业项
+  - name: answer
+    description: 作答提交与批改
+  - name: practice
+    description: 学习板块 · 自主练习
+  - name: study
+    description: 错题本与学情
+
+paths:
+
+  # ------------------------------------------------------- 系统与家庭配置
+  /system/ping:
+    get:
+      tags: [system]
+      summary: 连通性探测（App 首次配置服务端地址时调用）
+      description: 无需鉴权。用于校验服务端地址是否填对、版本是否匹配。
+      security: []
+      responses:
+        '200':
+          description: 服务可用
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          app:          { type: string, example: "primary-study" }
+                          version:      { type: string, example: "1.0.0" }
+                          apiVersion:   { type: string, example: "v1" }
+                          authRequired: { type: boolean, default: true }
+
+  /family:
+    get:
+      tags: [system]
+      summary: 家庭配置
+      responses:
+        '200':
+          description: 配置
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Family' }
+    put:
+      tags: [system]
+      summary: 更新家庭配置
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:     { type: string }
+                timezone: { type: string, example: "Asia/Shanghai" }
+                note:     { type: string }
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+
+  # ---------------------------------------------------------------- 设备
+  /devices:
+    get:
+      tags: [device]
+      summary: 已登记设备列表
+      description: 家长端可用于查看孩子平板的最后同步时间，判断是否真的在做作业。
+      responses:
+        '200':
+          description: 列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Device' }
+    post:
+      tags: [device]
+      summary: 登记 / 更新设备（App 首次配置时调用）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deviceId, role]
+              properties:
+                deviceId:    { type: string, example: "android-8f3a1c9e" }
+                label:       { type: string, example: "孩子的平板" }
+                role:        { type: integer, enum: [1, 2], description: 1孩子端 2家长端 }
+                platform:    { type: string, default: android }
+                formFactor:  { type: string, enum: [tablet, phone], description: 决定布局取向 }
+                pushToken:   { type: string }
+      responses:
+        '200':
+          description: 已登记
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Device' }
+
+  # ---------------------------------------------------------------- 学生
+  /students:
+    get:
+      tags: [student]
+      summary: 我的孩子列表
+      responses:
+        '200':
+          description: 列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Student' }
+    post:
+      tags: [student]
+      summary: 新增学生档案
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, grade]
+              properties:
+                name:        { type: string, example: "小明" }
+                grade:       { type: integer, default: 6 }
+                textbookVer: { type: string, default: RJ }
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Student' }
+
+  # ---------------------------------------------------------------- 截图识别
+  /captures:
+    post:
+      tags: [capture]
+      summary: 上传作业截图（客户端需先压缩到长边 1600px）
+      description: |
+        返回 `duplicated=true` 表示该图内容此前已被识别过，可直接取历史结果，
+        **不要**再消耗一次多模态调用。这是成本控制的关键路径。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [studentId, file]
+              properties:
+                studentId: { type: integer, format: int64 }
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: 上传完成
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          captureId:  { type: integer, format: int64 }
+                          imageHash:  { type: string }
+                          duplicated: { type: boolean, description: 内容是否已存在 }
+
+  /captures/{captureId}/recognize:
+    post:
+      tags: [capture]
+      summary: 发起识别（异步，立即返回 jobId）
+      parameters:
+        - $ref: '#/components/parameters/PathCaptureId'
+      responses:
+        '200':
+          description: 已入队
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          jobId:    { type: integer, format: int64 }
+                          cacheHit: { type: boolean, description: true 则通常秒回 }
+
+  /recognition-jobs/{jobId}:
+    get:
+      tags: [capture]
+      summary: 轮询识别结果
+      description: 建议客户端 1s / 2s / 3s 退避轮询，最长 60s 后转为「稍后查看」。
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: 任务状态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RecognitionJob' }
+
+  /recognition-jobs/{jobId}/corrections:
+    post:
+      tags: [capture]
+      summary: 记录家长对识别结果的修正
+      description: 用于评估模型准确率与优化提示词，务必在家长改完草稿后上报。
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                corrections:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      fieldPath:   { type: string, example: "items[2].subject" }
+                      beforeValue: { type: string }
+                      afterValue:  { type: string }
+      responses:
+        '200':
+          description: 已记录
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+
+  # ---------------------------------------------------------------- 作业
+  /assignments:
+    get:
+      tags: [assignment]
+      summary: 按日期查询作业单（学生端「今日作业」）
+      parameters:
+        - name: studentId
+          in: query
+          required: true
+          schema: { type: integer, format: int64 }
+        - name: date
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: status
+          in: query
+          description: 不传则返回全部；学生端传 1 只取已发布
+          schema: { type: integer, enum: [0, 1, 2, 3] }
+      responses:
+        '200':
+          description: 作业单列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Assignment' }
+
+  /events:
+    get:
+      tags: [assignment]
+      summary: 作业变更事件流（SSE，学生端前台订阅）
+      description: |
+        text/event-stream 长连接。家长端发布/删除/修正作业单后，服务端向每个
+        订阅者投递一条轻量事件；客户端收到后应走 GET /assignments 全量拉取
+        （事件只做通知、不捎数据）。连接建立先回一条 hello，之后每 20s 一条
+        注释帧（`: keep-alive`）保活兼探测死连接。鉴权与其他接口一致（Bearer）。
+      responses:
+        '200':
+          description: 事件流
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  data: {"type":"hello"}
+
+                  data: {"type":"assignments.changed","action":"publish","id":12}
+
+  /assignments/{assignmentId}:
+    get:
+      tags: [assignment]
+      summary: 作业单详情（含作业项）
+      parameters:
+        - $ref: '#/components/parameters/PathAssignmentId'
+      responses:
+        '200':
+          description: 详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Assignment' }
+    patch:
+      tags: [assignment]
+      summary: 家长确认 / 修正作业单（草稿与已发布都可以改）
+      description: |
+        这是「人在环路」的唯一入口，模型输出必须经此才能发布。
+        2026-10-09 起它同时是家长端「历史作业」的编辑接口。
+
+        - **草稿(0) 与已发布(1) 都可改**；已完成(2)/已归档(3) 返回 `409` ——
+          那意味着孩子已经在这条上做过题。
+          （早先只放行草稿，实践下来是错的：家长录错一条已发布的，唯一补救是删了重录，
+          而删除同样被挡住，最后只能 SSH 改库。单家庭部署里家长就是唯一管理员。）
+        - 每个字段都是**可选**的，只更新请求里出现的键。没出现的字段不会被清空 ——
+          items 也一样（不带 `estMinutes` 就不会动预估耗时）。
+        - `subject` **不可改**：它与 `assignDate` 一起构成作业单的身份键
+          `UNIQUE(student_id, assign_date, subject)`，改它等于换一条单子。
+          要换科目请删除后重录。
+        - `assignDate` 改成同一天同一科已有的日期会返回 `409`（唯一键冲突，附中文说明）。
+        - 每处改动都会写进 `recognition_correction`（含 field_path / 改前 / 改后），
+          这是后续优化提示词的**唯一依据**。作业单若没有关联的识别任务
+          （`job_assignment` 查不到），此项留档会跳过 —— `job_id` 是 NOT NULL，
+          与其塞假值不如不记。
+        - `items` 一旦传入即视为**全量覆盖**：不在数组里的作业项会被删除。
+        - **不会推送给学生端**：学生端下次刷新（冷启动 / 周期同步 / 手动）才会更新，
+          客户端必须在界面上讲清这一点。
+      parameters:
+        - $ref: '#/components/parameters/PathAssignmentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                assignDate:  { type: string, format: date, description: 日期识别不出来时由家长补 }
+                title:       { type: string }
+                needSubmit:  { type: boolean }
+                items:
+                  type: array
+                  items:
+                    allOf:
+                      - $ref: '#/components/schemas/AssignmentItemInput'
+                      - type: object
+                        properties:
+                          id: { type: integer, format: int64, description: 带 id 为更新，不带为新增 }
+      responses:
+        '200':
+          description: 已保存
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Assignment' }
+        '409':
+          description: 状态不允许修改（已完成 / 已归档），或 assignDate 撞上同一天同一科
+    delete:
+      tags: [assignment]
+      summary: 删除作业单（草稿或已发布）
+      description: |
+        **硬删除**，没有软删除、没有回收站；`assignment_item` 与 `job_assignment`
+        靠外键 `ON DELETE CASCADE` 一并清掉。
+
+        - 草稿(0) 与已发布(1) 都可删。
+        - 已完成(2)/已归档(3) 返回 `409`：孩子已经在这条上做过题，
+          删掉会让 `answer_record.assignment_item_id` 失去归属。
+        - 误删的防线在**客户端**（二次确认弹窗），服务端不做拦截。
+        - 删除**不会推送**给学生端，学生端下次刷新时本地那份才会消失
+          （学生端的同步按「本次拉取范围内服务端不存在的已发布作业单」做对齐）。
+      parameters:
+        - $ref: '#/components/parameters/PathAssignmentId'
+      responses:
+        '200':
+          description: 已删除
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '409':
+          description: 状态不允许删除（已完成 / 已归档）
+
+  /assignments/{assignmentId}/publish:
+    post:
+      tags: [assignment]
+      summary: 发布作业（草稿 → 已发布，学生端可见）
+      parameters:
+        - $ref: '#/components/parameters/PathAssignmentId'
+      responses:
+        '200':
+          description: 已发布
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+
+  # ---------------------------------------------------------------- 作答
+  /assignments/{assignmentId}/items/{itemId}/answer:
+    post:
+      tags: [answer]
+      summary: 提交作答（幂等）
+      description: |
+        离线补传时重复调用同一 `clientReqId` 不会产生重复记录。
+        `itemType=1`（客观题）服务端即时批改并返回 `isCorrect`；
+        `itemType=2/3` 走异步批改，返回 `gradingPending=true`。
+      parameters:
+        - $ref: '#/components/parameters/PathAssignmentId'
+        - name: itemId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientReqId]
+              properties:
+                clientReqId: { type: string, description: 客户端生成的 UUID v4 }
+                answerText:  { type: string }
+                mediaKeys:   { type: array, items: { type: string }, description: 录音/拍照 key }
+                durationMs:  { type: integer }
+      responses:
+        '200':
+          description: 提交结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/AnswerResult' }
+
+  # ---------------------------------------------------------- 学习板块
+  /practice/recommend:
+    get:
+      tags: [practice]
+      summary: 推荐练习内容（学习板块首页用）
+      description: 按知识点掌握度与错题到期情况推荐，数据来自 mastery 与 wrong_book。
+      parameters:
+        - name: studentId
+          in: query
+          required: true
+          schema: { type: integer, format: int64 }
+        - name: subject
+          in: query
+          required: true
+          schema: { type: integer, enum: [1, 2, 3] }
+      responses:
+        '200':
+          description: 推荐列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/PracticeRecommendation' }
+
+  /practice-sessions:
+    post:
+      tags: [practice]
+      summary: 开始一次自主练习
+      description: 学习板块的练习不对应任何作业单，独立成会话。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [studentId, subject, mode]
+              properties:
+                studentId: { type: integer, format: int64 }
+                subject:   { type: integer, enum: [1, 2, 3] }
+                mode:
+                  type: integer
+                  enum: [1, 2, 3, 4, 5, 6]
+                  description: 1知识点专项 2错题重做 3口算闯关 4单词记忆 5跟读评测 6古诗默写
+                kpId:      { type: integer, format: int64, description: 专项练习针对的知识点 }
+                itemCount: { type: integer, default: 10 }
+      responses:
+        '200':
+          description: 会话与题目已生成
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/PracticeSession'
+                          - type: object
+                            properties:
+                              items:
+                                type: array
+                                items: { $ref: '#/components/schemas/AssignmentItem' }
+
+  /practice-sessions/{sessionId}/answer:
+    post:
+      tags: [practice]
+      summary: 提交单题作答（幂等，语义同作业作答）
+      description: |
+        与作业作答共用一套幂等语义：重复的 `clientReqId` 返回同一条记录。
+        落库时 `answer_record.practice_session_id` 有值、`assignment_item_id` 为 NULL。
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientReqId, questionId]
+              properties:
+                clientReqId: { type: string }
+                questionId:  { type: integer, format: int64 }
+                answerText:  { type: string }
+                mediaKeys:   { type: array, items: { type: string } }
+                durationMs:  { type: integer }
+      responses:
+        '200':
+          description: 提交结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/AnswerResult' }
+
+  /practice-sessions/{sessionId}/finish:
+    post:
+      tags: [practice]
+      summary: 结束练习并结算
+      description: 服务端据此更新 mastery 与 wrong_book，返回本次成绩。
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: 结算结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PracticeSession' }
+
+  # ---------------------------------------------------------------- 学情
+  /wrong-book:
+    get:
+      tags: [study]
+      summary: 错题本
+      parameters:
+        - name: studentId
+          in: query
+          required: true
+          schema: { type: integer, format: int64 }
+        - name: subject
+          in: query
+          schema: { type: integer, enum: [1, 2, 3] }
+        - name: dueOnly
+          in: query
+          description: 仅返回今日待复习（艾宾浩斯到期的）
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: 错题列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/WrongBookEntry' }
+
+  /reports/weekly:
+    get:
+      tags: [study]
+      summary: 周学情报告（家长端核心页面）
+      parameters:
+        - name: studentId
+          in: query
+          required: true
+          schema: { type: integer, format: int64 }
+        - name: weekStart
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: 报告
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/WeeklyReport' }
+
+  /knowledge-points/tree:
+    get:
+      tags: [study]
+      summary: 知识点树（按学科）
+      parameters:
+        - name: subject
+          in: query
+          required: true
+          schema: { type: integer, enum: [1, 2, 3] }
+      responses:
+        '200':
+          description: 知识点树
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/KnowledgePoint' }
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: FAMILY_TOKEN
+      description: |
+        单家庭私有部署：**不使用 JWT**。服务端在 `.env` 中配置一个 `FAMILY_TOKEN`，
+        App 首次配置时填入，之后原样放入 `Authorization: Bearer <FAMILY_TOKEN>`。
+        多设备（孩子手机 + 家长手机）共用同一个 Token。无过期、无刷新、无短信。
+
+  parameters:
+    PathAssignmentId:
+      name: assignmentId
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    PathCaptureId:
+      name: captureId
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+
+  schemas:
+
+    Ok:
+      type: object
+      properties:
+        code:    { type: integer, example: 0 }
+        message: { type: string, example: "ok" }
+        traceId: { type: string }
+
+    Family:
+      type: object
+      properties:
+        id:       { type: integer }
+        name:     { type: string, example: "我家" }
+        timezone: { type: string, example: "Asia/Shanghai" }
+        note:     { type: string }
+
+    Student:
+      type: object
+      properties:
+        id:            { type: integer, format: int64 }
+        name:          { type: string }
+        grade:         { type: integer }
+        textbookVer:   { type: string }
+        avatarUrl:     { type: string }
+        dailyLimitMin: { type: integer }
+
+    Device:
+      type: object
+      properties:
+        id:          { type: integer, format: int64 }
+        deviceId:    { type: string }
+        label:       { type: string }
+        role:        { type: integer, enum: [1, 2] }
+        platform:    { type: string }
+        formFactor:  { type: string, enum: [tablet, phone] }
+        lastSyncAt:  { type: string, format: date-time, nullable: true }
+        createdAt:   { type: string, format: date-time }
+
+    AssignmentItem:
+      type: object
+      description: |
+        作业项。`subject`/`itemType`/`answerMode` 三个枚举决定后端走哪条批改链路和客户端用什么作答控件。
+        `subjectName` / `itemTypeName` / `answerModeName` 是服务端回填的可读名，
+        客户端**直接显示即可**，不要自己写一套映射（否则服务端加枚举值时双端不一致）。
+      properties:
+        id:          { type: integer, format: int64 }
+        seq:         { type: integer }
+        subject:     { type: integer, enum: [1, 2, 3, 9], description: 1语文 2数学 3英语 9其他 }
+        subjectName: { type: string, example: 数学 }
+        itemType:    { type: integer, enum: [1, 2, 3, 4], description: 1客观题 2主观题 3听读打卡 4线下实践 }
+        itemTypeName: { type: string, example: 客观题 }
+        answerMode:  { type: integer, enum: [0, 1, 2, 3, 4], description: 0无需作答 1键盘 2手写 3录音 4拍照 }
+        answerModeName: { type: string, example: 拍照 }
+        title:       { type: string }
+        requirement: { type: string }
+        imageKey:    { type: string }
+        questionId:  { type: integer, format: int64, nullable: true }
+        estMinutes:  { type: integer }
+        status:      { type: integer, enum: [0, 1, 2] }
+        answer:      { $ref: '#/components/schemas/AnswerResult' }
+
+    AssignmentItemInput:
+      type: object
+      properties:
+        seq:         { type: integer }
+        subject:     { type: integer, enum: [1, 2, 3, 9] }
+        itemType:    { type: integer, enum: [1, 2, 3, 4] }
+        answerMode:  { type: integer, enum: [0, 1, 2, 3, 4] }
+        title:       { type: string }
+        requirement: { type: string }
+        estMinutes:  { type: integer }
+        knowledgePointCodes:
+          type: array
+          items: { type: string }
+
+    Assignment:
+      type: object
+      description: |
+        一次作业单（学生 × 日期 × 科目）。
+
+        ⚠️ **身份键是 `(studentId, assignDate, subject)`，不是 title。**
+        title 是展示属性，家长随时可以改；把它当身份会导致「改完标题再重新识别 → 冒出一条重复作业单」。
+        客户端做本地缓存时也请按这个三元组做主键。
+      properties:
+        id:          { type: integer, format: int64 }
+        studentId:   { type: integer, format: int64 }
+        assignDate:  { type: string, format: date }
+        subject:     { type: integer, enum: [1, 2, 3, 9], description: 1语文 2数学 3英语 9其他 }
+        subjectName: { type: string, example: 英语 }
+        title:       { type: string }
+        needSubmit:  { type: boolean, description: 截图里的「无需提交」标签。false = 要做但不用交 }
+        source:      { type: integer, enum: [1, 2], description: 1手工 2截图识别 }
+        status:      { type: integer, enum: [0, 1, 2, 3], description: 0草稿 1已发布 2已完成 3已归档 }
+        statusName:  { type: string, enum: [draft, published, completed, archived] }
+        confirmedAt: { type: string, format: date-time }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AssignmentItem' }
+
+    RecognitionJob:
+      type: object
+      description: |
+        识别任务。轮询 `GET /recognition-jobs/{jobId}` 直到 `status` 进入终态（2/3/4）。
+        `status=2` 时响应里会**顺带带上** `draft`（模型原始输出，含 needs_review）
+        与 `assignments`（已落库的草稿单，含 id 可直接调 PATCH），家长端一次请求就能渲染确认页。
+      properties:
+        jobId:       { type: integer, format: int64 }
+        captureId:   { type: integer, format: int64 }
+        status:      { type: integer, enum: [0, 1, 2, 3, 4], description: 0排队 1识别中 2成功 3失败 4已放弃 }
+        statusName:  { type: string, enum: [pending, running, succeeded, failed, given_up] }
+        cacheHit:    { type: boolean, description: 命中图片哈希缓存，未重复调用模型 }
+        retryCount:  { type: integer }
+        maxRetry:    { type: integer }
+        nextRetryAt: { type: string, format: date-time, nullable: true, description: 退避后最早可重试时间 }
+        tokens:      { type: integer, nullable: true, description: 本次消耗 token，成本核算依据 }
+        durationMs:  { type: integer }
+        errorMsg:    { type: string, nullable: true }
+        draft:
+          description: 模型结构化输出原文（含 needs_review / not_homework / attachments）
+          type: object
+          additionalProperties: true
+        assignments:
+          type: array
+          description: 本次识别涉及并落库的作业单（**全部为草稿**）
+          items: { $ref: '#/components/schemas/Assignment' }
+        warnings:
+          type: array
+          description: 模型自认不确定的地方，客户端需高亮提示家长重点核对
+          items: { type: string }
+          example: ["日期由消息时间戳「昨天」推算，请核对", "第 3 项作业内容在截图底部被截断"]
+
+    AnswerResult:
+      type: object
+      properties:
+        recordId:       { type: integer, format: int64 }
+        isCorrect:      { type: boolean, nullable: true }
+        score:          { type: number, nullable: true }
+        gradingMode:    { type: integer, enum: [1, 2, 3] }
+        gradingPending: { type: boolean }
+        correctAnswer:  { type: string, description: 仅在客观题且答错时返回 }
+
+    WrongBookEntry:
+      type: object
+      properties:
+        id:            { type: integer, format: int64 }
+        questionId:    { type: integer, format: int64 }
+        subject:       { type: integer }
+        stem:          { type: string }
+        wrongCount:    { type: integer }
+        lastWrongAt:   { type: string, format: date-time }
+        nextReviewAt:  { type: string, format: date-time }
+        mastered:      { type: boolean }
+        knowledgePoints:
+          type: array
+          items: { type: string }
+
+    WeeklyReport:
+      type: object
+      properties:
+        studentId:      { type: integer, format: int64 }
+        weekStart:      { type: string, format: date }
+        totalItems:     { type: integer }
+        finishedItems:  { type: integer }
+        accuracy:       { type: number, example: 0.86 }
+        studyMinutes:   { type: integer }
+        streakDays:     { type: integer }
+        weakPoints:
+          type: array
+          description: 掌握度最低的知识点，按 score 升序
+          items:
+            type: object
+            properties:
+              code:  { type: string }
+              name:  { type: string }
+              score: { type: number }
+        trend:
+          type: array
+          description: 近 7 日正确率，用于画进步曲线
+          items:
+            type: object
+            properties:
+              date:     { type: string, format: date }
+              accuracy: { type: number }
+
+    KnowledgePoint:
+      type: object
+      properties:
+        id:       { type: integer, format: int64 }
+        parentId: { type: integer, format: int64, nullable: true }
+        subject:  { type: integer }
+        name:     { type: string }
+        code:     { type: string }
+        mastery:  { type: number, nullable: true, description: 该学生的掌握度 }
+        children:
+          type: array
+          items: { $ref: '#/components/schemas/KnowledgePoint' }
+
+    PracticeSession:
+      type: object
+      properties:
+        id:           { type: integer, format: int64 }
+        studentId:    { type: integer, format: int64 }
+        subject:      { type: integer, enum: [1, 2, 3] }
+        mode:         { type: integer, enum: [1, 2, 3, 4, 5, 6] }
+        kpId:         { type: integer, format: int64, nullable: true }
+        itemCount:    { type: integer }
+        correctCount: { type: integer }
+        durationMs:   { type: integer }
+        startedAt:    { type: string, format: date-time }
+        finishedAt:   { type: string, format: date-time, nullable: true }
+
+    PracticeRecommendation:
+      type: object
+      properties:
+        kpId:        { type: integer, format: int64 }
+        kpName:      { type: string, example: "圆的面积" }
+        subject:     { type: integer, enum: [1, 2, 3] }
+        reason:      { type: string, enum: [weak, wrong_due], description: weak=掌握度低 wrong_due=错题到期 }
+        mastery:     { type: number, nullable: true, description: 当前掌握度 0-1 }
+        dueCount:    { type: integer, description: 到期待复习错题数 }
+        suggestMode: { type: integer, enum: [1, 2, 3, 4, 5, 6] }

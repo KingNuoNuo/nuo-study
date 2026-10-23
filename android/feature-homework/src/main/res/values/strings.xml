@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="feature_homework_title">今日作业</string>
+    <!-- 今天没有作业时退回显示最近一次，标题要跟着变，不能还是「今日作业」 -->
+    <string name="feature_homework_title_recent">最近一次作业</string>
+    <string name="feature_homework_recent_hint">今天还没有作业（老师可能还没发），下面是最近一次的。做之前先看清日期。</string>
+    <string name="feature_homework_empty">这里还没有任何作业。\n等家长在手机端的「录入」里拍一张老师发的作业、确认发布后，就会出现在这里。</string>
+    <string name="feature_homework_refresh">刷新</string>
+    <string name="feature_homework_syncing">正在同步…</string>
+    <string name="feature_homework_item_count">共 %1$d 项</string>
+    <!-- 各科作业数量统计胶囊：如「语文 3」 -->
+    <string name="feature_homework_subject_count">%1$s %2$d</string>
+    <string name="feature_homework_need_submit">需要提交</string>
+    <string name="feature_homework_no_submit">无需提交</string>
+    <string name="feature_homework_workbench_pending">作答区还没接入 —— 当前能看到作业内容与作答方式，还不能动笔。</string>
+</resources>

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+      录音：孩子端**唯一**需要申请的敏感权限，只用于语文朗读 / 英语跟读。
+      注意这里只是「声明」，运行时仍要在进入朗读题时才弹窗申请
+      （不要在 App 启动时就问，孩子会被莫名其妙的权限弹窗吓到）。
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!--
+      ⚠️ 孩子端刻意**不要**相机权限：拍照上传是家长端的事。
+         权限越少，越不容易在儿童设备上出问题。
+    -->
+
+    <!--
+      ⚠️ android:icon / roundIcon 是**必填的观感项**：不写的话系统会给一个默认机器人图标
+         （debug 包照样能装，所以很容易漏掉，直到装到平板上才发现）
+    -->
+    <application
+        android:name=".StudentApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="false"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:theme="@style/Theme.Study">
+
+        <!--
+          ⚠️ 关于横屏锁定（一个真实的坑）：
+             screenOrientation="sensorLandscape" 在 Android 15 及以前有效，
+             但 **Android 16 (API 36) 起，系统对 sw>=600dp 的大屏设备忽略这个声明**。
+             也就是说孩子端在较新的平板上会跟着系统自动旋转。
+             骨架阶段先保留声明（老设备仍生效），
+             真要在新系统上强制横屏，需要在代码里做方向处理（而不是依赖 Manifest）。
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Study">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          ⚠️⚠️ 一个**编译期完全看不出来**的运行时坑（本工程实际踩过）：
+
+          WorkManager 2.12 起，「用 Application 实现 Configuration.Provider 来提供
+          WorkerFactory」是 **opt-in** 行为。只要 androidx.startup 的
+          InitializationProvider 里还挂着 WorkManagerInitializer，它就会在
+          ContentProvider 阶段用 `new Configuration.Builder().build()` 抢先把
+          WorkManager 初始化掉 —— 此时 Application 还没到 onCreate，Provider 根本没被读。
+
+          后果：core-sync 里 @HiltWorker 标注的 Worker 拿不到 HiltWorkerFactory，
+          不走构造函数注入那条路，直接掉进反射分支，
+          运行时抛 NoSuchMethodException: <init>[Context, WorkerParameters]
+          → 每次同步 Worker result=FAILURE，且日志只在 logcat 里，
+            界面上只是「数据一直不更新」，极难定位。
+
+          修法就是下面这段：把 WorkManagerInitializer 从 startup 里摘掉，
+          让 WorkManager 延迟到第一次调用时再初始化，从而走到 StudentApp 的
+          getWorkManagerConfiguration()。
+        -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+    </application>
+
+</manifest>

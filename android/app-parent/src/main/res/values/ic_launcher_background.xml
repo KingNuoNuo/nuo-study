@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  自适应图标背景色。家长端用橙色，与孩子端的蓝形成明显区分 ——
+  两个 App 装在同一台手机上时，靠颜色一眼分辨，不用去读名字。
+-->
+<resources>
+    <color name="ic_launcher_background">#E07B27</color>
+</resources>

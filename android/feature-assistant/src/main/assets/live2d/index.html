@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Live2D PoC · 虚拟形象</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#141821;
+            font-family:system-ui,-apple-system,"Segoe UI","Noto Sans SC",sans-serif}
+  body.transparent{background:transparent}
+  /* studio：App 面板里那块「视频画面」的底色。
+     不用纯色 —— 纯深色底上人物的头发（深棕）会糊成一片，用一层很淡的径向
+     高光把人从背景里「托」出来，视觉上像棚拍打了一盏背光。 */
+  body.studio{background:radial-gradient(120% 78% at 50% 34%,
+      rgba(96,120,170,.42) 0%, rgba(46,56,76,.75) 42%, #12161E 100%)}
+  #stage{display:block;width:100%;height:100%}
+  #hud{position:absolute;left:8px;top:8px;padding:8px 10px;border-radius:10px;
+       background:rgba(10,12,16,.74);color:#e8eaef;font-size:12px;line-height:1.75;
+       user-select:none;max-width:300px}
+  #hud .row{margin:1px 0}
+  #hud b{font-weight:500}
+  #hud button{font:inherit;margin:1px;padding:2px 7px;border-radius:6px;
+              border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.08);
+              color:#e8eaef}
+  #hud button.on{background:#378ADD;border-color:#378ADD}
+  #hud input[type=range]{width:118px;vertical-align:middle}
+  #status,#fps{opacity:.72}
+  #err{position:absolute;left:8px;bottom:8px;right:8px;color:#F09595;font-size:12px;
+       white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div id="hud">
+  <div class="row"><b><span id="modelName">…</span> · Live2D PoC</b> <span id="status">loading…</span></div>
+  <div class="row">口型 <input id="mouth" type="range" min="0" max="100" value="0"><span id="mouthv"> 0.00</span></div>
+  <div class="row">
+    说话 <button id="btnSpeak">模拟说话</button>
+    <button id="btnStop">停</button>
+    <span id="fps">– fps</span>
+  </div>
+  <div class="row">动作 <span id="motions"></span></div>
+  <div class="row" id="expWrap">表情 <span id="expressions"></span></div>
+  <div class="row">状态 <span id="states"></span></div>
+</div>
+<div id="err"></div>
+<script src="lib/pixi.min.js"></script>
+<script src="lib/live2dcubismcore.min.js"></script>
+<script src="lib/cubism4.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

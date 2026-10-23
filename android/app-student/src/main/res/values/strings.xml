@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 孩子端显示名。刻意不用「小学学习」这种泛称 ——
+         平板桌面上会和一堆学习类 App 混在一起，孩子找不到。 -->
+    <string name="app_name">我的作业</string>
+</resources>

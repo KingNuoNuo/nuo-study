@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  网络安全策略 —— 孩子端与家长端共用这一份（core-ui 的资源会合并进两个 App）。
+
+  ⚠️ 为什么必须允许明文 HTTP：这是**有意为之**，不是忘了配 HTTPS。
+
+  Android 9（API 28）起默认禁止明文流量。而本项目的服务端是**家里 NAS 上的
+  局域网服务**（形如 http://192.168.1.10:8092），地址由家长在设置页手填。
+  不放开的话，所有请求都会以
+
+      CLEARTEXT communication to 192.168.1.10 not permitted by network security policy
+
+  失败 —— 而 **编译期完全看不出来**，静态检查也查不出。
+  这个坑是 2026-10-09 装到真机平板上联调「测试连接」时才暴露的。
+
+  为什么不上 HTTPS：
+    · 服务端是自签证书，Android 不认，家长得先在每台设备上手动装 CA ——
+      对一个「拍张照就能看作业」的家庭应用，这个门槛不划算；
+    · 通信只在自家局域网内（单家庭私有部署，服务端不暴露公网），威胁模型不成立。
+
+  ⚠️ 代价与边界（别在别处扩大它）：
+    · 这里放开的是**整个 App** 的明文流量，不只是家庭服务器。所以这两个 App
+      以后不要再去访问任何需要保密的外部站点。
+    · `<domain>` 只接受域名/主机名，**不支持 CIDR / IP 段**，而家长填的地址是
+      任意局域网 IP 或内网穿透域名 —— 枚举不出来，所以只能整体放开。
+    · 将来若固定成某个域名，把它挪进 domain-config，再把 base-config 改回
+      cleartextTrafficPermitted="false" 收紧。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

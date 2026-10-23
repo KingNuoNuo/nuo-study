@@ -1,0 +1,65 @@
+{
+  "_doc": "人工标注基准（ground truth）。用于量识别准确率，请勿凭空修改——改这里必须回原图核对。",
+  "_images": {
+    "7ce1ca997e0333c6": "英语作业 App 列表（家长端截图）",
+    "0455425b926a4533": "QQ 群：语文老师反馈 + 作业",
+    "382fb243de5dbf8f": "QQ 群：数学老师 10.8 作业长图"
+  },
+  "7ce1ca997e0333c6": {
+    "assignments": [
+      {
+        "assign_date": "2026-10-08",
+        "subject": "英语",
+        "need_submit": false,
+        "items": [
+          {"must_include": ["英语练习单一张", "书写要认真规范", "查阅生词"]},
+          {"must_include": ["默写巩固", "不少于15分钟"]},
+          {"must_include": ["不规则动词表"]}
+        ]
+      },
+      {
+        "assign_date": "2026-09-30",
+        "subject": "英语",
+        "need_submit": false,
+        "items": [
+          {"must_include": ["默写单", "订正并签字"]},
+          {"must_include": ["查漏补缺"]},
+          {"must_include": ["课课练", "27", "28", "29"]},
+          {"must_include": ["第二单元", "25-26"]}
+        ]
+      }
+    ],
+    "must_not_appear_in_items": ["无需提交", "全部作业", "作业统计", "返回"],
+    "expect_truncation_note": true
+  },
+  "0455425b926a4533": {
+    "assignments": [
+      {
+        "assign_date": null,
+        "subject": "语文",
+        "items": [
+          {"must_include": ["大册", "单元练习二"]}
+        ]
+      }
+    ],
+    "must_not_appear_in_items": ["【反馈】", "40、19、10", "缴费", "智慧校园"],
+    "expect_not_homework_flag": "【反馈】",
+    "expect_relative_date_note": true
+  },
+  "382fb243de5dbf8f": {
+    "assignments": [
+      {
+        "assign_date": "2026-10-08",
+        "subject": "数学",
+        "items": [
+          {"must_include": ["计算"]},
+          {"must_include": ["复习要点"]},
+          {"must_include": ["假期作业订正"]}
+        ]
+      }
+    ],
+    "must_not_appear_in_items": ["0.5 + 4 = 4.65", "默写", "不规则动词"],
+    "expect_attachment_count_min": 2,
+    "expect_no_problem_transcription": true
+  }
+}

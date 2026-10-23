@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+      相机：家长端用它拍老师留的作业。
+      required="false" 很重要 —— 有些老手机/备用机没有可用相机，
+      不该因为缺少硬件就装不上。
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+
+    <application
+        android:name=".ParentApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="false"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:theme="@style/Theme.Study">
+
+        <!--
+          竖屏锁死：家长端是单手持握场景，不做横屏适配。
+
+          launchMode="singleTask"：**这个应用只有一个 Activity，它就该是单实例的**。
+          不写的话（默认 standard），`am start` 和某些外部入口会再开一个实例 ——
+          同一个 App 跑出两个 ParentRoot、两套 ViewModel、两条轮询：
+          一个在前台看「App 内截图」，另一个在后台还在拉「整屏抓取」，
+          而后者会让服务端的 adb 抓帧线程永远停不下来（见 feature-mirror 的 MirrorScreen）。
+          这个 bug 真出现过，现象是「切回 App 内截图后服务端一直有人在取整屏帧」。
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Study">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          ⚠️⚠️ 与孩子端同款坑，必须同样处理（详见 app-student 清单里的长注释）：
+
+          WorkManager 2.12 起「Application 实现 Configuration.Provider 提供 WorkerFactory」
+          是 opt-in。只要 androidx.startup 的 InitializationProvider 还挂着
+          WorkManagerInitializer，它就会用 `new Configuration.Builder().build()`
+          抢先初始化 —— ParentApp.getWorkManagerConfiguration() 永远不会被读到，
+          core-sync 的 @HiltWorker Worker 直接反射实例化失败（NoSuchMethodException）。
+
+          家长端虽然主要靠前台直连（发布后 syncNow），但 syncNow 排的也是这个 Worker，
+          不修的话「发布完顺手拉一次」同样是空转。
+        -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+    </application>
+
+</manifest>

@@ -1,0 +1,24 @@
+# 服务端运行时依赖 —— 单家庭私有部署，给下限不强钉死，方便随系统 Python 走
+#
+# 装法（NAS）：
+#   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+#
+# 说明：
+#   · uvicorn 刻意不带 [standard] 后缀 —— 那个会拉 httptools/uvloop，
+#     在无编译环境的机器上会卡在 build，单家庭这点流量用纯 ASGI 完全够。
+#     真要提速再换 uvicorn[standard]（需 gcc + python3-dev）。
+#   · python-multipart 是 FastAPI 解析 multipart/form-data 的硬依赖
+#     （上传作业截图走的就是它），漏装会在启动时报 RuntimeError。
+#   · Pillow 只用于上传前压缩大图；recognizer.py 里是 try-import，
+#     确实装不上也不会崩，只是 12MB 的原图会被原样送去识别（更贵更慢）。
+
+fastapi>=0.115
+uvicorn>=0.30
+pydantic>=2.7
+python-multipart>=0.0.9
+Pillow>=10.0
+# 英语「跟读评测」要连腾讯智聆的 WebSocket。标准库没有 WS 客户端，
+# 手写 RFC6455 分帧不值得 —— 这是全套依赖里唯一一个纯粹为它加的包。
+# 没装也能启动：english.py 里是函数内 import，另外三个英语能力照常可用，
+# 只有 /evaluate 会明确报「缺少 websockets 库」。
+websockets>=12

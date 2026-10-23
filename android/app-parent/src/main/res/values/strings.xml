@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 家长端显示名。与孩子端刻意不同名 ——
+         一家人手机上同时装着两个，名字一样会互相装错。 -->
+    <string name="app_name">学习管家</string>
+</resources>

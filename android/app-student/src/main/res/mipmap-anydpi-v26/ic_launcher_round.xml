@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  圆形启动图标。内容与 ic_launcher.xml 相同是**故意的**：
+  圆形/方形由启动器决定，我们只提供「背景 + 前景」，
+  系统会自己裁成对应形状。分成两个文件是为了兼容仍会读 roundIcon 的老启动器。
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  自适应图标（adaptive icon）的背景色。
+  ⚠️ 必须是**纯色资源**：adaptive icon 只允许「一层背景 + 一层前景」，
+     渐变/位图背景在部分启动器上会被裁得很难看。孩子端用品牌蓝。
+-->
+<resources>
+    <color name="ic_launcher_background">#2B4DE0</color>
+</resources>

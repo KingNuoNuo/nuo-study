@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  孩子端图标前景：作业本上的对勾。
+
+  ⚠️ 关于安全区（画这层图必须懂，否则图标会被裁）：
+     adaptive icon 的 108×108 画布里，只有**中心 72×72 是保证可见的**，
+     最外圈会被启动器按自己的形状（圆/方/水滴）裁掉。
+     所以所有图形都控制在 (36..72) 这个内接矩形附近，别贴着边画。
+
+  ⚠️ 用 vector 而不是 PNG：minSdk = 26，全量设备都支持 adaptive icon，
+     一份矢量就够，还省掉 mdpi~xxxhdpi 五套位图。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 作业本：白色圆角矩形 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M38,34 L70,34 A7,7 0 0 1 77,41 L77,67 A7,7 0 0 1 70,74 L38,74 A7,7 0 0 1 31,67 L31,41 A7,7 0 0 1 38,34 Z" />
+
+    <!-- 两道横线：代表作业条目 -->
+    <path
+        android:strokeColor="#2B4DE0"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M40,45 L60,45" />
+    <path
+        android:strokeColor="#9FB0F5"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M40,54 L52,54" />
+
+    <!-- 对勾：本子右下角，压住一角 -->
+    <path
+        android:strokeColor="#22B463"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M55,66 L63,73 L80,54" />
+</vector>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  家长端图标前景：相机轮廓（对应它的核心动作「拍老师留的作业」）。
+
+  ⚠️ 同孩子端：图形必须留在 108×108 画布的中心 72×72 内（约 36..72），
+     最外圈会被启动器裁掉。这里最外沿到 33/75，属于安全区内侧。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 相机机身 + 顶部取景器凸起，一笔画完（线框风格） -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M38,44 L45,44 L48,38 L60,38 L63,44 L70,44 A5,5 0 0 1 75,49 L75,69 A5,5 0 0 1 70,74 L38,74 A5,5 0 0 1 33,69 L33,49 A5,5 0 0 1 38,44 Z" />
+
+    <!-- 镜头 -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="6"
+        android:pathData="M54,60 m-10,0 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0" />
+</vector>
