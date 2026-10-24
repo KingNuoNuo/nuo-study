@@ -61,6 +61,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.nuostudy.core.network.ChatTurn
@@ -822,19 +823,111 @@ fun EnglishScreen(
                     onHoldEnd = { vm.stopAndEvaluate(unit.unit, sentence) },
                 )
                 Spacer(Modifier.height(10.dp))
-                val result = vm.evalResult
-                if (result != null) {
-                    EvalCard(result, Modifier.fillMaxWidth().weight(1f))
-                } else {
-                    // 还没评过分 → 下半放「本单元句型」，点一句就是换跟读目标。
-                    // 不放的话下面一大片 cream 色，看起来像「这页还没加载完」。
-                    SentenceList(
-                        sentences = sentences,
-                        current = si.coerceIn(0, sentences.lastIndex),
-                        onPick = { si = it },
-                        modifier = Modifier.fillMaxWidth().weight(1f),
+                // 评分不再占页面（会顶掉句型列表，孩子翻页才看得到）——
+                // 改成**弹出对话框**（见下方 LaunchedEffect）。句型列表常驻在这里，
+                // 关掉弹窗就能直接选下一句接着练。
+                SentenceList(
+                    sentences = sentences,
+                    current = si.coerceIn(0, sentences.lastIndex),
+                    onPick = { si = it },
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                )
+            }
+        }
+    }
+
+    // ---- 评分弹窗 ----
+    // evalResult 一有新值就弹（旧值还在 vm 里供报告统计；重读一句会覆盖成新分，
+    // LaunchedEffect 以对象引用为 key，新结果 → 重新触发 → 再弹一次）。
+    vm.evalResult?.let { result ->
+        var showEval by remember(result) { mutableStateOf(true) }
+        if (showEval) {
+            EvalDialog(result, onDismiss = { showEval = false })
+        }
+    }
+}
+
+/**
+ * 跟读评分的弹出层。
+ *
+ * 用 Dialog 而不是页面内嵌卡片（2026-10-24 靖哥哥要求）：评分是**一次跟读的
+ * 结论**，孩子念完最想要的就是立刻看到「多少分、哪里读错了」—— 弹窗天然聚焦；
+ * 而页面空间留给句型列表，关掉弹窗选下一句接着练，不用翻页。
+ *
+ * 高度上限 480dp：逐词批改行数随句子长度浮动，内部自己滚动；
+ * 外面套 cream 底白卡，跟整页风格一致。点遮罩或「继续跟读」关闭。
+ */
+@Composable private fun EvalDialog(r: SoeResult, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            Modifier.fillMaxWidth().heightIn(max = 480.dp),
+            colors = CardDefaults.cardColors(Color.White),
+            shape = RoundedCornerShape(22.dp),
+        ) {
+            Column(Modifier.padding(18.dp)) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        "跟读得分",
+                        color = green,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        "%.0f".format(r.suggestedScore),
+                        style = MaterialTheme.typography.displaySmall,
+                        fontWeight = FontWeight.Black,
+                    )
+                    Text(
+                        " 分",
+                        color = Color.Gray,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(bottom = 6.dp),
                     )
                 }
+                Text(
+                    when {
+                        r.suggestedScore >= 90 -> "太棒了，语音语调很地道！"
+                        r.suggestedScore >= 75 -> "不错，再顺一点就更好"
+                        r.suggestedScore >= 60 -> "能听懂，跟着示范再念两遍"
+                        else -> "一个词一个词慢慢读，别急"
+                    },
+                    color = ink.copy(alpha = .72f),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // ⚠️ PronAccuracy 是 0~100，而 Fluency / Completion 是 **0~1 的比例**。
+                    //    不乘 100 的话孩子会看到「流利 1 分」。
+                    MiniMetric("准确", r.pronAccuracy, Modifier.weight(1f))
+                    MiniMetric("流利", r.pronFluency * 100.0, Modifier.weight(1f))
+                    MiniMetric("完整", r.pronCompletion * 100.0, Modifier.weight(1f))
+                }
+                if (r.words.isNotEmpty()) {
+                    Text(
+                        "逐词批改",
+                        color = Color.Gray,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                    Column(
+                        Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
+                            .padding(top = 6.dp),
+                    ) {
+                        r.words.chunked(3).forEach { group ->
+                            Row(
+                                Modifier.padding(bottom = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                group.forEach { w -> WordChip(w) }
+                            }
+                        }
+                    }
+                }
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(containerColor = green, contentColor = Color.White),
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                ) { Text("继续跟读") }
             }
         }
     }
@@ -1050,67 +1143,6 @@ fun EnglishScreen(
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable private fun EvalCard(r: SoeResult, modifier: Modifier = Modifier) {
-    val comment = when {
-        r.suggestedScore >= 90 -> "太棒了，语音语调很地道！"
-        r.suggestedScore >= 75 -> "不错，再顺一点就更好"
-        r.suggestedScore >= 60 -> "能听懂，跟着示范再念两遍"
-        else -> "一个词一个词慢慢读，别急"
-    }
-    Card(modifier, colors = CardDefaults.cardColors(Color.White), shape = RoundedCornerShape(20.dp)) {
-        Column(Modifier.fillMaxSize().padding(18.dp)) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    "跟读得分",
-                    color = green,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    "%.0f".format(r.suggestedScore),
-                    style = MaterialTheme.typography.displaySmall,
-                    fontWeight = FontWeight.Black,
-                )
-                Text(
-                    " 分",
-                    color = Color.Gray,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(bottom = 6.dp),
-                )
-            }
-            Text(comment, color = ink.copy(alpha = .72f), style = MaterialTheme.typography.bodySmall)
-            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // ⚠️ PronAccuracy 是 0~100，而 Fluency / Completion 是 **0~1 的比例**。
-                //    不乘 100 的话孩子会看到「流利 1 分」。
-                MiniMetric("准确", r.pronAccuracy, Modifier.weight(1f))
-                MiniMetric("流利", r.pronFluency * 100.0, Modifier.weight(1f))
-                MiniMetric("完整", r.pronCompletion * 100.0, Modifier.weight(1f))
-            }
-            if (r.words.isNotEmpty()) {
-                Text(
-                    "逐词批改",
-                    color = Color.Gray,
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-                Column(
-                    Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 6.dp),
-                ) {
-                    // 一行 3 个：左栏只有 420dp，4 个会让 "should" 这种词折行
-                    r.words.chunked(3).forEach { group ->
-                        Row(
-                            Modifier.padding(bottom = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            group.forEach { w -> WordChip(w) }
                         }
                     }
                 }
