@@ -780,64 +780,38 @@ fun EnglishScreen(
     }
 
     /*
-     * ⚠️ 为什么是两栏（2026-10-23 靖哥哥反馈「一行行翻才能点到对话按钮」）
+     * ⚠️ 为什么改成**切换式**（2026-10-24 靖哥哥要求，替代 10-23 的两栏版）
      *
-     * 原来是单列：跟读卡(~280dp) + 评分卡(~280dp) + 对话卡(~200dp) + 标题(60dp)
-     * ≈ 820dp，而 8 寸平板横屏的可用高度只有 ~530dp —— 对话按钮必然在第二屏。
+     * 两栏版解决了「按钮在第二屏」，但暴露了新问题：左右两个卡片里各挤着
+     * 一个完整功能，字号/间距都被压小；对话记录一多，右栏滚动起来两个
+     * 「按住说话」还容易按错栏。
      *
-     * 平板本来就是横屏、内容区有 760dp 宽，竖着堆是浪费。改成左右两栏后
-     * **两个「按住说话」都落在首屏**，而且右栏的按钮是钉在底部的，对话再多也不用翻。
-     *
-     * 700dp 是分界：再窄下去左栏只剩 400dp，一句课文要折 5 行，不如退回单列。
+     * 现在的模式：顶部一条分段切换，**一屏只呈现一个功能**——
+     *   · 跟读：句子卡 + 评分卡（或句型列表），全程不用滚动；
+     *   · 对话：整页留给对话，气泡更多也不挤，按钮仍钉在底部。
+     * 切换状态用 rememberSaveable 记住 —— 切去别的页再回来，停在上次的模式。
+     * 录音器两个模式共用，但 recordPurpose 区分用途，不会互相串数据。
+     * 单列布局天然自适应宽窄屏，不再需要 BoxWithConstraints 两套代码。
      */
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val wide = maxWidth >= 700.dp
-        if (wide) {
-            Row(
-                Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                Column(Modifier.weight(1.35f).fillMaxHeight()) {
-                    SpeakHeader(vm)
-                    Spacer(Modifier.height(10.dp))
-                    ReadingCard(
-                        vm = vm,
-                        sentence = sentence,
-                        canNext = sentences.size > 1,
-                        onSpeak = { vm.speak(sentence) },
-                        onNext = { si = (si + 1) % sentences.size },
-                        onHoldStart = { holdStart("eval") },
-                        onHoldEnd = { vm.stopAndEvaluate(unit.unit, sentence) },
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    val result = vm.evalResult
-                    if (result != null) {
-                        EvalCard(result, Modifier.weight(1f))
-                    } else {
-                        // 还没评过 → 左栏下半放「本单元句型」，点一句就是换跟读目标。
-                        // 不放的话跟读卡只占上半屏，下面一大片 cream 色，
-                        // 看起来像「这页还没加载完」。
-                        SentenceList(
-                            sentences = sentences,
-                            current = si.coerceIn(0, sentences.lastIndex),
-                            onPick = { si = it },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-                ChatPanel(
-                    vm = vm,
-                    onHoldStart = { holdStart("chat") },
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                )
-            }
-        } else {
-            // 窄屏：单列，但对话卡仍撑满剩余高度（按钮在它的底部）
-            Column(
-                Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                SpeakHeader(vm)
+    var mode by rememberSaveable { mutableStateOf("read") }
+
+    Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp)) {
+        SpeakHeader(vm)
+        Spacer(Modifier.height(10.dp))
+        ModeSwitch(
+            mode = mode,
+            onSelect = { mode = it },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(10.dp))
+
+        when (mode) {
+            "chat" -> ChatPanel(
+                vm = vm,
+                onHoldStart = { holdStart("chat") },
+                modifier = Modifier.fillMaxWidth().weight(1f),
+            )
+            else -> {
                 ReadingCard(
                     vm = vm,
                     sentence = sentence,
@@ -847,12 +821,83 @@ fun EnglishScreen(
                     onHoldStart = { holdStart("eval") },
                     onHoldEnd = { vm.stopAndEvaluate(unit.unit, sentence) },
                 )
-                vm.evalResult?.let { EvalCard(it, Modifier.fillMaxWidth()) }
-                ChatPanel(
-                    vm = vm,
-                    onHoldStart = { holdStart("chat") },
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                )            }
+                Spacer(Modifier.height(10.dp))
+                val result = vm.evalResult
+                if (result != null) {
+                    EvalCard(result, Modifier.fillMaxWidth().weight(1f))
+                } else {
+                    // 还没评过分 → 下半放「本单元句型」，点一句就是换跟读目标。
+                    // 不放的话下面一大片 cream 色，看起来像「这页还没加载完」。
+                    SentenceList(
+                        sentences = sentences,
+                        current = si.coerceIn(0, sentences.lastIndex),
+                        onPick = { si = it },
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 「跟读 / 对话」分段切换条。
+ *
+ * 手写而不是用 Material3 的 SegmentedButton：那个组件在当前 BOM 里还是
+ * experimental，而且它的高度/圆角和这页的卡片风格对不齐。手写 40dp 的
+ * 两段胶囊，选中的绿底白字，跟整页的按钮语言一致。
+ *
+ * ⚠️ 两个 tab 的可点击区都 ≥40dp 且等宽 —— 这是**孩子**在操作，目标太小
+ * 会连点几下都切不过去（切页签不灵敏是顶栏刚踩过的坑）。
+ */
+@Composable private fun ModeSwitch(
+    mode: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(modifier, shape = RoundedCornerShape(16.dp), color = Color.White) {
+        Row(
+            Modifier.padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            ModeTab(
+                label = "🎙 跟读练习",
+                active = mode == "read",
+                modifier = Modifier.weight(1f),
+                onClick = { onSelect("read") },
+            )
+            ModeTab(
+                label = "💬 自由对话",
+                active = mode == "chat",
+                modifier = Modifier.weight(1f),
+                onClick = { onSelect("chat") },
+            )
+        }
+    }
+}
+
+@Composable private fun ModeTab(
+    label: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(13.dp),
+        color = if (active) green else Color.Transparent,
+    ) {
+        Box(
+            Modifier.fillMaxWidth().heightIn(min = 40.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                label,
+                color = if (active) Color.White else ink.copy(alpha = .62f),
+                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                style = MaterialTheme.typography.titleSmall,
+            )
         }
     }
 }
